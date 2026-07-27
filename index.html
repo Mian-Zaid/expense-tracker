@@ -121,6 +121,15 @@
   .entry .right .amt{font-weight:700;font-size:14px;font-variant-numeric:tabular-nums}
   .entry .right .date{font-size:11px;color:var(--muted)}
   .entry.pending{opacity:.55}
+  .entry .del{
+    appearance:none;flex:none;border:1px solid var(--border);background:transparent;
+    color:var(--muted);width:32px;height:32px;border-radius:9px;cursor:pointer;
+    font-size:15px;line-height:1;display:grid;place-items:center;
+    transition:background .15s ease, color .15s ease, transform .08s ease, border-color .15s ease;
+  }
+  .entry .del:hover{background:rgba(239,68,68,.1);color:var(--danger);border-color:rgba(239,68,68,.35)}
+  .entry .del:active{transform:scale(.9)}
+  .entry .del:disabled{opacity:.4;cursor:not-allowed}
   .empty{color:var(--muted);font-size:13px;text-align:center;padding:18px 0}
   /* modal */
   .modal-back{
@@ -362,6 +371,7 @@
     var html = "";
     ordered.slice(0, 40).forEach(function(e){
       var initials = (e.category || "?").trim().slice(0,2);
+      var canDelete = !e._pending && e.row;
       html += '<div class="entry'+(e._pending ? " pending" : "")+'">'
         + '<div class="chip">'+esc(initials)+'</div>'
         + '<div class="body">'
@@ -372,6 +382,9 @@
         +   '<div class="amt">'+fmt(e.amount)+'</div>'
         +   '<div class="date">'+esc(prettyDate(e.date))+(e._pending ? " · saving…" : "")+'</div>'
         + '</div>'
+        + '<button class="del" title="Delete" aria-label="Delete expense"'
+        +   (canDelete ? ' data-row="'+esc(e.row)+'" data-logged="'+esc(e.loggedAt||"")+'"' : ' disabled')
+        +   '>&times;</button>'
         + '</div>';
     });
     els.entries.innerHTML = html;
@@ -408,6 +421,7 @@
       return { date:e[0], category:e[1], description:e[2], amount:num(e[3]), loggedAt:e[4] };
     }
     return {
+      row: e.row,
       date: e.date || e.Date,
       category: e.category || e.Category,
       description: e.description || e.Description || "",
@@ -476,6 +490,51 @@
       return data;
     });
   }
+
+  function deleteExpense(row, loggedAt){
+    return fetch(state.url, {
+      method:"POST",
+      headers:{ "Content-Type":"text/plain;charset=utf-8" },
+      body: JSON.stringify({ action:"delete", row:row, loggedAt:loggedAt })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      if(!data || data.ok === false) throw new Error((data && data.error) || "Delete failed");
+      applyData(data);
+      reconcilePending();
+      renderAll();
+      setConnected(true, new Date().toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"}));
+      return data;
+    });
+  }
+
+  // delete via event delegation on the entries list
+  els.entries.addEventListener("click", function(ev){
+    var btn = ev.target.closest ? ev.target.closest(".del") : null;
+    if(!btn || btn.disabled) return;
+    var row = parseInt(btn.getAttribute("data-row"), 10);
+    if(!isFinite(row)) return;
+    var loggedAt = btn.getAttribute("data-logged") || "";
+    if(!confirm("Delete this expense?")) return;
+
+    // optimistic removal
+    var removed = null, idx = -1;
+    for(var i=0;i<state.expenses.length;i++){
+      if(state.expenses[i].row === row){ removed = state.expenses[i]; idx = i; break; }
+    }
+    if(idx !== -1) state.expenses.splice(idx, 1);
+    renderAll();
+    banner("");
+
+    deleteExpense(row, loggedAt)
+      .catch(function(err){
+        // restore on failure, then resync from server for a clean state
+        if(removed && idx !== -1) state.expenses.splice(idx, 0, removed);
+        renderAll();
+        banner("Delete failed: " + esc(err.message), "warn");
+        fetchData();
+      });
+  });
 
   // ---- form ----
   els.form.addEventListener("submit", function(ev){

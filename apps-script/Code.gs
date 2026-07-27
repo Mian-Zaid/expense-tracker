@@ -39,6 +39,11 @@ function doPost(e) {
       body = JSON.parse(e.postData.contents);
     }
 
+    // Delete action: { action:'delete', row:<sheetRow>, loggedAt:<optional guard> }
+    if (String(body.action || '').toLowerCase() === 'delete') {
+      return deleteExpense(body);
+    }
+
     var date = body.date ? String(body.date) : todayISO();
     var category = String(body.category || '').trim();
     var description = String(body.description || '').trim();
@@ -59,6 +64,33 @@ function doPost(e) {
   } catch (err) {
     return jsonOutput({ ok: false, error: String(err && err.message || err) });
   }
+}
+
+/** Delete a single expense row by its sheet row number. */
+function deleteExpense(body) {
+  var row = parseInt(body.row, 10);
+  if (!isFinite(row) || row < 2) throw new Error('Invalid row');
+
+  var sheet = getExpensesSheet();
+  var lastRow = sheet.getLastRow();
+  if (row > lastRow) throw new Error('Row out of range');
+
+  // Optional guard: if loggedAt was provided, make sure it matches this row
+  // so a stale client can't delete the wrong entry after rows shifted.
+  if (body.loggedAt) {
+    var current = toISO(sheet.getRange(row, 5).getValue());
+    if (current && String(current) !== String(body.loggedAt)) {
+      throw new Error('Row changed, please refresh');
+    }
+  }
+
+  sheet.deleteRow(row);
+
+  return jsonOutput({
+    ok: true,
+    categories: getCategories(),
+    expenses: getExpenses()
+  });
 }
 
 /* ------------------------- helpers ------------------------- */
@@ -123,6 +155,7 @@ function getExpenses() {
       continue;
     }
     out.push({
+      row: i + 2, // actual sheet row number (header is row 1)
       date: toDateString(r[0]),
       category: String(r[1] || ''),
       description: String(r[2] || ''),
