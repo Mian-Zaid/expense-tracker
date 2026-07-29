@@ -35,16 +35,37 @@ You need two things (both free, one-time):
 
 ## Sheet layout
 
-- **Categories** come from **row 1** (the header titles) of the first sheet tab
-  that is *not* named `Expenses`.
-- **Expenses** are stored in a tab named `Expenses` with columns:
-  `Date | Category | Description | Amount | Logged At`
-  (the app creates this tab automatically on the first save).
+The app reads a **single tab** (default name `Expenses`) that contains **one or
+more category tables laid out side by side**. Each table is one **category**:
 
-Example first tab (e.g. named `Categories`), titles in **row 1**:
+- The **category name** sits in a cell above the table's header row.
+- The **header row** has the columns `Description | Amount | Date` (in that order).
+- Rows below are the expenses for that category, optionally ending in a `Total` row.
+- Tables are separated by one or more blank columns and can each be a different
+  length.
 
-| Food | Transport | Bills | Shopping | Health | Other |
-|------|-----------|-------|----------|--------|-------|
+Example (two categories side by side — a blank column between them):
+
+| Khalid Thekaydar |        |        |     | Materials |        |        |
+|------------------|--------|--------|-----|-----------|--------|--------|
+| **Description**  | **Amount** | **Date** | | **Description** | **Amount** | **Date** |
+| Advance          | 40,000 | 3 Feb 2026 | | Wire coil | 5,000 | 4 Feb 2026 |
+| 1st week         | 23,200 | 12 Feb 2026 | | Water cooler | 12,000 | 6 Feb 2026 |
+| Total            | 63,200 |          | | … | | |
+
+The app **auto-detects every table** by finding each `Description` header, and
+uses the title above it as the category. You don't configure columns anywhere.
+
+### How adding & deleting works (safe by design)
+
+- **Add** writes the new expense into the first empty row under the chosen
+  category's data. It **never inserts or deletes whole rows** (that would shift
+  the neighbouring tables) and **never overwrites a non-empty cell**.
+- **Delete** just clears that entry's three cells, leaving a blank gap — again,
+  no row shifting.
+- Your sheet's own `Total` formulas are left untouched. If a Total uses a fixed
+  range that doesn't cover the new row, extend that range in the sheet; the app's
+  own "By Category" totals always reflect every entry.
 
 ---
 
@@ -83,8 +104,8 @@ Example first tab (e.g. named `Categories`), titles in **row 1**:
 
 1. Open `index.html` (locally or via GitHub Pages — see below).
 2. Tap the **⚙︎** icon (top right).
-3. Paste your **OAuth Client ID** and your **Sheet link/ID**, set a currency, and
-   **Save**.
+3. Paste your **OAuth Client ID**, your **Sheet link/ID**, the **Tab name** that
+   holds your category tables (default `Expenses`), set a currency, and **Save**.
 4. Click **Sign in with Google**, choose your account, and allow access.
 
 Categories load and expenses sync straight to your sheet. 🎉
