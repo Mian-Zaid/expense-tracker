@@ -1,9 +1,14 @@
 # Expense Tracker
 
+**🔗 Live app: https://mian-zaid.github.io/expense-tracker/**
+
 A clean, single-page expense tracker that reads and writes **your own Google Sheet
 directly from the browser** — no server, no Apps Script, no build step. It's just
 one self-contained `index.html` that talks to the Google Sheets API using your own
 Google sign-in.
+
+> First time here? Open the link above, tap **⚙︎**, and follow the
+> [Setup](#setup) section to connect your Google Sheet.
 
 - 📱 Mobile-friendly, light **and** dark mode (follows your system)
 - 🗓️ Add expenses with date, amount, category, and description
@@ -114,13 +119,16 @@ Categories load and expenses sync straight to your sheet. 🎉
 
 ## Hosting on GitHub Pages
 
-Because the app is a single static file, hosting is free:
+This repo is already deployed at **https://mian-zaid.github.io/expense-tracker/**.
+
+To host your own copy (it's a single static file, so hosting is free):
 
 1. Push this repo to GitHub.
 2. **Settings → Pages → Build and deployment → Source:** *Deploy from a branch*.
 3. Branch **`main`**, folder **`/ (root)`** → **Save**.
-4. Your app goes live at `https://<your-username>.github.io/<repo-name>/`.
-5. Make sure that **origin** (`https://<your-username>.github.io`) is listed under
+4. Your app goes live at `https://<your-username>.github.io/<repo-name>/`
+   (for this repo that's `https://mian-zaid.github.io/expense-tracker/`).
+5. Make sure that **origin** (`https://mian-zaid.github.io`) is listed under
    your OAuth client's **Authorized JavaScript origins** (step 1.4 above).
 
 Open the URL on any device, connect it once in ⚙ settings, and sign in. Settings
