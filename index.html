@@ -210,6 +210,12 @@
     </div>
 
     <div class="field" style="margin-top:14px">
+      <label for="ignoreInput">Ignore tables (comma-separated)</label>
+      <input type="text" id="ignoreInput" placeholder="brick wasoli, cement wasoli" />
+      <div class="hint">These category tables are skipped (not expenses). Leave empty to include all.</div>
+    </div>
+
+    <div class="field" style="margin-top:14px">
       <label for="curInput">Currency symbol</label>
       <input type="text" id="curInput" placeholder="Rs" maxlength="6" />
     </div>
@@ -231,7 +237,8 @@
 (function(){
   "use strict";
 
-  var LS_CLIENT="et_client_id", LS_SHEET="et_sheet_id", LS_TAB="et_tab", LS_CUR="et_currency";
+  var LS_CLIENT="et_client_id", LS_SHEET="et_sheet_id", LS_TAB="et_tab", LS_CUR="et_currency", LS_IGNORE="et_ignore";
+  var DEFAULT_IGNORE="brick wasoli, cement wasoli";
   var POLL_MS=20000;
   var SCOPE="https://www.googleapis.com/auth/spreadsheets";
   var DISCOVERY="https://sheets.googleapis.com/$discovery/rest?version=v4";
@@ -241,6 +248,7 @@
     sheetId:localStorage.getItem(LS_SHEET)||"",
     tab:localStorage.getItem(LS_TAB)||"Expenses",
     currency:localStorage.getItem(LS_CUR)||"Rs",
+    ignoreRaw:(localStorage.getItem(LS_IGNORE)!=null?localStorage.getItem(LS_IGNORE):DEFAULT_IGNORE),
     categories:[],   // block titles, in sheet order
     blocks:{},       // title -> {descCol,amountCol,dateCol,headerRow,totalRow,lastDataRow}
     expenses:[],     // parsed entries {category,description,amount,date,row,descCol,dateCol}
@@ -258,7 +266,7 @@
     entries:$("entries"),banner:$("banner"),bannerText:$("bannerText"),bannerAct:$("bannerAct"),
     syncSub:$("syncSub"),settingsBtn:$("settingsBtn"),authBtn:$("authBtn"),
     modalBack:$("modalBack"),clientIdInput:$("clientIdInput"),sheetInput:$("sheetInput"),
-    tabInput:$("tabInput"),curInput:$("curInput"),connectBtn:$("connectBtn"),
+    tabInput:$("tabInput"),ignoreInput:$("ignoreInput"),curInput:$("curInput"),connectBtn:$("connectBtn"),
     connectBtnText:$("connectBtnText"),authState:$("authState"),
     saveSettings:$("saveSettings"),cancelSettings:$("cancelSettings")
   };
@@ -274,6 +282,9 @@
   function parseSheetId(v){v=trimStr(v);var m=v.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);return m?m[1]:v.replace(/^.*[\/=]/,"");}
   function configured(){return !!(state.clientId&&state.sheetId&&state.tab);}
   function q(name){return "'"+String(name).replace(/'/g,"''")+"'";}
+  function normName(s){return trimStr(s).toLowerCase().replace(/\s+/g," ");}
+  function ignoreList(){return String(state.ignoreRaw||"").split(",").map(normName).filter(function(x){return x!=="";});}
+  function isIgnored(title){var n=normName(title),L=ignoreList();for(var i=0;i<L.length;i++){if(n===L[i]||n.indexOf(L[i])!==-1)return true;}return false;}
   function colA1(n){var s="";n=n+1;while(n>0){var m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=Math.floor((n-1)/26);}return s;}
   function banner(msg,kind,actLabel,actFn){
     if(!msg){els.banner.className="status";els.bannerText.textContent="";els.bannerAct.classList.add("hidden");return;}
@@ -297,6 +308,7 @@
         var title="";
         for(var t=r-1;t>=0;t--){ var tv=trimStr(grid[t]&&grid[t][descCol]); if(tv){title=tv;break;} }
         if(!title) title="Table "+colA1(descCol);
+        if(isIgnored(title)) continue; // skip excluded tables (e.g. wasoli/recovery)
         var baseTitle=title, k=2; while(blocks[title]){ title=baseTitle+" ("+(k++)+")"; }
         // walk data rows down to Total / end
         var totalRow=null, lastDataRow=headerRow;
@@ -571,7 +583,7 @@
   /* ---------------- settings modal ---------------- */
   function openModal(){
     els.clientIdInput.value=state.clientId;els.sheetInput.value=state.sheetId;
-    els.tabInput.value=state.tab;els.curInput.value=state.currency;
+    els.tabInput.value=state.tab;els.ignoreInput.value=state.ignoreRaw;els.curInput.value=state.currency;
     els.authState.textContent=state.signedIn?"Signed in ✓":"Not signed in.";
     els.modalBack.classList.add("open");
   }
@@ -585,10 +597,12 @@
     state.clientId=els.clientIdInput.value.trim();
     state.sheetId=parseSheetId(els.sheetInput.value);
     state.tab=els.tabInput.value.trim()||"Expenses";
+    state.ignoreRaw=els.ignoreInput.value;
     state.currency=els.curInput.value.trim()||"Rs";
     localStorage.setItem(LS_CLIENT,state.clientId);
     localStorage.setItem(LS_SHEET,state.sheetId);
     localStorage.setItem(LS_TAB,state.tab);
+    localStorage.setItem(LS_IGNORE,state.ignoreRaw);
     localStorage.setItem(LS_CUR,state.currency);
     renderCurrency();
   }
