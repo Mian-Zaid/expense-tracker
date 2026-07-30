@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<meta name="theme-color" content="#6366f1" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#14b8a6" media="(prefers-color-scheme: light)" />
 <meta name="theme-color" content="#0b0b12" media="(prefers-color-scheme: dark)" />
 <title>Expense Tracker</title>
 <!-- Google Identity Services (OAuth token client) + GAPI (Sheets API). No backend. -->
@@ -11,7 +11,7 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
-    --indigo:#6366f1; --indigo-600:#4f46e5; --indigo-050:#eef2ff;
+    --indigo:#14b8a6; --indigo-600:#0d9488; --indigo-050:#ccfbf1;
     --bg:#f5f6fa; --card:#ffffff; --text:#1e1f27; --muted:#71727f;
     --border:#e6e7ef; --track:#ecedf5;
     --shadow:0 1px 2px rgba(20,20,40,.05), 0 8px 24px rgba(20,20,50,.06);
@@ -20,7 +20,7 @@
   @media (prefers-color-scheme: dark){
     :root{
       --bg:#0b0b12; --card:#16161f; --text:#e9e9f1; --muted:#9a9ba8;
-      --border:#262635; --track:#23232f; --indigo-050:#1c1c33;
+      --border:#262635; --track:#23232f; --indigo-050:#0e2e2a;
       --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.45);
     }
   }
@@ -44,7 +44,7 @@
   }
   .icon-btn.square{width:42px;padding:0;font-size:18px}
   .icon-btn:active{transform:scale(.94)}
-  .icon-btn.accent{background:var(--indigo);color:#fff;border-color:transparent;box-shadow:0 6px 16px rgba(99,102,241,.35)}
+  .icon-btn.accent{background:var(--indigo);color:#fff;border-color:transparent;box-shadow:0 6px 16px rgba(20,184,166,.35)}
   .hidden{display:none !important}
   .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:16px}
   .total-card{background:linear-gradient(135deg,var(--indigo),var(--indigo-600));color:#fff;border:none}
@@ -61,7 +61,7 @@
     border-radius:12px;padding:11px 12px;width:100%;outline:none;
     transition:border-color .15s ease, box-shadow .15s ease;
   }
-  input:focus,select:focus,textarea:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(99,102,241,.18)}
+  input:focus,select:focus,textarea:focus{border-color:var(--indigo);box-shadow:0 0 0 3px rgba(20,184,166,.18)}
   textarea{resize:vertical;min-height:64px}
   .amount-wrap{position:relative}
   .amount-wrap .cur{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-weight:600;pointer-events:none}
@@ -69,7 +69,7 @@
   .btn{
     appearance:none;border:none;cursor:pointer;font:inherit;font-weight:700;background:var(--indigo);color:#fff;
     border-radius:12px;padding:13px 16px;width:100%;transition:transform .08s ease, opacity .15s ease;
-    box-shadow:0 6px 16px rgba(99,102,241,.35);
+    box-shadow:0 6px 16px rgba(20,184,166,.35);
   }
   .btn:active{transform:scale(.99)}
   .btn:disabled{opacity:.55;cursor:not-allowed;box-shadow:none}
