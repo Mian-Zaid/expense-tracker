@@ -13,8 +13,10 @@ Google sign-in.
 - 📱 Mobile-friendly, light **and** dark mode (follows your system)
 - 🗓️ Add expenses with date, amount, category, and description
 - 🏷️ Categories are pulled live from your Google Sheet header row
-- 📊 Big **Total Spent** plus per-category totals with progress bars
-- 🗑️ Delete any expense
+- 📊 Big **Total Spent** plus **expandable** per-category totals (tap a category
+  to see its last 10 entries)
+- ✎ **Edit** and 🗑️ **delete** any expense — both guarded by a confirmation popup
+- 🕒 **Recent Entries** sorted newest-first by date, 10 at a time with **Load more**
 - ⚡ Optimistic updates + 20-second polling to stay in sync across devices
 - 🔐 Signs in with **your** Google account — data never leaves your Sheet
 - 💾 Client ID, Sheet ID, and currency saved in your browser (`localStorage`)
