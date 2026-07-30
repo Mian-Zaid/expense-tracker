@@ -90,14 +90,31 @@
   .entry .right .amt{font-weight:700;font-size:14px;font-variant-numeric:tabular-nums}
   .entry .right .date{font-size:11px;color:var(--muted)}
   .entry.pending{opacity:.55}
-  .entry .del{
-    appearance:none;flex:none;border:1px solid var(--border);background:transparent;color:var(--muted);
-    width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:15px;line-height:1;display:grid;place-items:center;
+  .acts{display:flex;gap:6px;flex:none}
+  .iconbtn{
+    appearance:none;border:1px solid var(--border);background:transparent;color:var(--muted);
+    width:32px;height:32px;border-radius:9px;cursor:pointer;font-size:14px;line-height:1;display:grid;place-items:center;
     transition:background .15s ease, color .15s ease, transform .08s ease, border-color .15s ease;
   }
-  .entry .del:hover{background:rgba(239,68,68,.1);color:var(--danger);border-color:rgba(239,68,68,.35)}
-  .entry .del:active{transform:scale(.9)}
-  .entry .del:disabled{opacity:.4;cursor:not-allowed}
+  .iconbtn:active{transform:scale(.9)}
+  .iconbtn.edit:hover{background:var(--indigo-050);color:var(--indigo);border-color:var(--indigo)}
+  .iconbtn.del:hover{background:rgba(239,68,68,.1);color:var(--danger);border-color:rgba(239,68,68,.35)}
+  /* expandable category blocks */
+  .cat-block{border-bottom:1px solid var(--border)}
+  .cat-block:last-child{border-bottom:none}
+  .cat-head{cursor:pointer;padding:12px 0 10px;user-select:none}
+  .cat-head .caret{display:inline-block;width:14px;color:var(--muted);font-size:11px;transition:transform .15s ease}
+  .cat-entries{padding:0 0 8px 10px;margin:0 0 6px 4px;border-left:2px solid var(--border)}
+  .cat-entries .entry{padding:9px 0}
+  .cat-entries .entry .chip{width:34px;height:34px;font-size:12px}
+  .loadmore{
+    appearance:none;width:100%;margin-top:14px;border:1px solid var(--border);background:transparent;color:var(--indigo);
+    font:inherit;font-weight:700;font-size:13px;padding:11px;border-radius:11px;cursor:pointer;transition:transform .08s ease,background .15s ease;
+  }
+  .loadmore:hover{background:var(--indigo-050)}
+  .loadmore:active{transform:scale(.99)}
+  .confirm-msg{font-size:14px;color:var(--text);white-space:pre-wrap;margin:0 0 4px;line-height:1.5}
+  .err{font-size:12px;color:var(--danger);margin-top:8px;min-height:14px}
   .empty{color:var(--muted);font-size:13px;text-align:center;padding:18px 0}
   .modal-back{position:fixed;inset:0;background:rgba(10,10,20,.5);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
   .modal-back.open{display:flex}
@@ -180,6 +197,7 @@
   <div class="card">
     <h2 class="section">Recent Entries</h2>
     <div id="entries"><div class="empty">No expenses yet</div></div>
+    <button class="loadmore hidden" id="loadMore" type="button">Load more</button>
   </div>
 
   <div class="foot">Reads &amp; writes your Google Sheet directly — no server.</div>
@@ -233,6 +251,49 @@
   </div>
 </div>
 
+<!-- Edit expense modal -->
+<div class="modal-back" id="editBack">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+    <h3 id="editTitle">Edit Expense</h3>
+    <p>Change any field, then Save. Changing the category moves the entry to that table.</p>
+    <div class="grid">
+      <div class="field">
+        <label for="editDate">Date</label>
+        <input type="text" id="editDate" placeholder="e.g. 30 Jul 2026" />
+      </div>
+      <div class="field">
+        <label for="editAmount">Amount</label>
+        <input type="number" id="editAmount" inputmode="decimal" step="0.01" min="0" placeholder="0.00" />
+      </div>
+      <div class="field full">
+        <label for="editCat">Category</label>
+        <select id="editCat"></select>
+      </div>
+      <div class="field full">
+        <label for="editDesc">Description</label>
+        <textarea id="editDesc" placeholder="What was this for?"></textarea>
+      </div>
+    </div>
+    <div class="err" id="editErr"></div>
+    <div class="row">
+      <button class="btn ghost" id="editCancel" type="button">Cancel</button>
+      <button class="btn" id="editSave" type="button">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm modal -->
+<div class="modal-back" id="confirmBack">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle" style="max-width:400px">
+    <h3 id="confirmTitle">Please confirm</h3>
+    <p class="confirm-msg" id="confirmMsg">Are you sure?</p>
+    <div class="row">
+      <button class="btn ghost" id="confirmNo" type="button">Cancel</button>
+      <button class="btn" id="confirmYes" type="button" style="background:var(--danger);box-shadow:0 6px 16px rgba(239,68,68,.35)">Delete</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   "use strict";
@@ -253,7 +314,11 @@
     blocks:{},       // title -> {descCol,amountCol,dateCol,headerRow,totalRow,lastDataRow}
     expenses:[],     // parsed entries {category,description,amount,date,row,descCol,dateCol}
     pending:[],
-    signedIn:false
+    signedIn:false,
+    recentLimit:10,  // how many confirmed recent entries to show
+    expanded:{},     // category title -> expanded?
+    byId:{},         // entry id -> entry (for edit/delete lookups)
+    editing:null     // entry currently open in the edit modal
   };
 
   var gapiReady=false, tokenClient=null, tokenExpiry=0;
@@ -263,12 +328,15 @@
     form:$("expenseForm"),date:$("date"),amount:$("amount"),category:$("category"),
     description:$("description"),submitBtn:$("submitBtn"),curLabel:$("curLabel"),
     totalAmount:$("totalAmount"),totalMeta:$("totalMeta"),catBreakdown:$("catBreakdown"),
-    entries:$("entries"),banner:$("banner"),bannerText:$("bannerText"),bannerAct:$("bannerAct"),
+    entries:$("entries"),loadMore:$("loadMore"),banner:$("banner"),bannerText:$("bannerText"),bannerAct:$("bannerAct"),
     syncSub:$("syncSub"),settingsBtn:$("settingsBtn"),authBtn:$("authBtn"),
     modalBack:$("modalBack"),clientIdInput:$("clientIdInput"),sheetInput:$("sheetInput"),
     tabInput:$("tabInput"),ignoreInput:$("ignoreInput"),curInput:$("curInput"),connectBtn:$("connectBtn"),
     connectBtnText:$("connectBtnText"),authState:$("authState"),
-    saveSettings:$("saveSettings"),cancelSettings:$("cancelSettings")
+    saveSettings:$("saveSettings"),cancelSettings:$("cancelSettings"),
+    editBack:$("editBack"),editDate:$("editDate"),editAmount:$("editAmount"),editCat:$("editCat"),
+    editDesc:$("editDesc"),editErr:$("editErr"),editSave:$("editSave"),editCancel:$("editCancel"),
+    confirmBack:$("confirmBack"),confirmMsg:$("confirmMsg"),confirmYes:$("confirmYes"),confirmNo:$("confirmNo")
   };
 
   /* ---------------- helpers ---------------- */
@@ -286,6 +354,56 @@
   function ignoreList(){return String(state.ignoreRaw||"").split(",").map(normName).filter(function(x){return x!=="";});}
   function isIgnored(title){var n=normName(title),L=ignoreList();for(var i=0;i<L.length;i++){if(n===L[i]||n.indexOf(L[i])!==-1)return true;}return false;}
   function colA1(n){var s="";n=n+1;while(n>0){var m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=Math.floor((n-1)/26);}return s;}
+
+  /* --------- date parsing (sheet dates are messy: "3 Feb 2026", "26 Feb", "3/13/2026", "12 March") --------- */
+  var MONTHS="jan feb mar apr may jun jul aug sep oct nov dec".split(" ");
+  function monIndex(w){return MONTHS.indexOf(String(w).slice(0,3).toLowerCase());}
+  function explicitYear(s){var m=String(s).match(/\b(19|20)\d{2}\b/);return m?parseInt(m[0],10):null;}
+  function guessYear(list){
+    var years=[];list.forEach(function(e){var y=explicitYear(e.date);if(y)years.push(y);});
+    return years.length?Math.max.apply(null,years):new Date().getFullYear();
+  }
+  function parseDate(s,defY){
+    s=trimStr(s); if(!s) return NaN;
+    if(/\b(19|20)\d{2}\b/.test(s)){var t=Date.parse(s);if(isFinite(t))return t;}
+    var low=s.toLowerCase(), m;
+    if((m=low.match(/^(\d{1,2})\s+([a-z]+)\.?$/))){var mi=monIndex(m[2]);if(mi>=0)return new Date(defY,mi,parseInt(m[1],10)).getTime();}
+    if((m=low.match(/^([a-z]+)\.?\s+(\d{1,2})$/))){var mj=monIndex(m[1]);if(mj>=0)return new Date(defY,mj,parseInt(m[2],10)).getTime();}
+    if((m=low.match(/^(\d{1,2})[\/\-](\d{1,2})$/))){var a=parseInt(m[1],10),b=parseInt(m[2],10),mm=a>12?b:a,dd=a>12?a:b;return new Date(defY,mm-1,dd).getTime();}
+    var tt=Date.parse(s+" "+defY); return isFinite(tt)?tt:NaN;
+  }
+  // Sort a list of entries newest-first by parsed date, tie-broken by sheet row.
+  function sortByDateDesc(list,defY){
+    return list.map(function(e,i){return {e:e,t:parseDate(e.date,defY),i:i};})
+      .sort(function(a,b){
+        var ta=isFinite(a.t)?a.t:-Infinity, tb=isFinite(b.t)?b.t:-Infinity;
+        if(tb!==ta)return tb-ta;
+        return (b.e.row||0)-(a.e.row||0);
+      }).map(function(x){return x.e;});
+  }
+
+  /* --------- reusable entry card (used in Recent Entries AND per-category) --------- */
+  function entryId(e){return e.row+"_"+e.descCol;}
+  function rebuildIndex(){
+    state.byId={};
+    state.expenses.forEach(function(e){ state.byId[entryId(e)]=e; });
+  }
+  function cardHTML(e){
+    var initials=(e.category||"?").trim().slice(0,2);
+    var canAct=!e._pending&&e.row;
+    var id=canAct?entryId(e):"";
+    return '<div class="entry'+(e._pending?" pending":"")+'">'
+      +'<div class="chip">'+esc(initials)+'</div>'
+      +'<div class="body"><div class="cat">'+esc(e.description||e.category||"—")+'</div>'
+      +  '<div class="desc">'+esc(e.category||"")+(e.date?" · "+esc(e.date):"")+'</div></div>'
+      +'<div class="right"><div class="amt">'+fmt(e.amount)+'</div>'
+      +  '<div class="date">'+(e._pending?"saving…":"")+'</div></div>'
+      +'<div class="acts">'
+      +  (canAct?'<button class="iconbtn edit" data-id="'+esc(id)+'" title="Edit" aria-label="Edit">✎</button>':'')
+      +  (canAct?'<button class="iconbtn del" data-id="'+esc(id)+'" title="Delete" aria-label="Delete">&times;</button>':'')
+      +'</div>'
+      +'</div>';
+  }
   function banner(msg,kind,actLabel,actFn){
     if(!msg){els.banner.className="status";els.bannerText.textContent="";els.bannerAct.classList.add("hidden");return;}
     els.banner.className="status show "+(kind||"info");els.bannerText.innerHTML=msg;
@@ -343,46 +461,60 @@
     els.category.innerHTML=html;
     if(cur&&state.categories.indexOf(cur)!==-1) els.category.value=cur; else els.category.value=state.categories[0];
   }
-  function renderTotals(){
-    var list=allExpenses(), total=0, byCat={};
-    list.forEach(function(e){var a=num(e.amount);total+=a;byCat[e.category]=(byCat[e.category]||0)+a;});
+  function renderStats(){
+    var list=allExpenses(), total=0;
+    list.forEach(function(e){total+=num(e.amount);});
     els.totalAmount.textContent=fmt(total);
     els.totalMeta.textContent=list.length+(list.length===1?" entry":" entries");
+  }
+  // Expandable per-category breakdown; each shows a bar + (when open) last 10 entries.
+  function renderBreakdown(){
+    var list=allExpenses(), byCat={}, entriesByCat={};
+    list.forEach(function(e){
+      byCat[e.category]=(byCat[e.category]||0)+num(e.amount);
+      (entriesByCat[e.category]=entriesByCat[e.category]||[]).push(e);
+    });
     var cats=state.categories.slice();
     Object.keys(byCat).forEach(function(k){if(cats.indexOf(k)===-1)cats.push(k);});
     if(!cats.length){els.catBreakdown.innerHTML='<div class="empty">No categories yet</div>';return;}
     var max=0;cats.forEach(function(c){if((byCat[c]||0)>max)max=byCat[c]||0;});
     cats.sort(function(a,b){return (byCat[b]||0)-(byCat[a]||0);});
+    var defY=guessYear(state.expenses);
     var html="";
     cats.forEach(function(c){
-      var v=byCat[c]||0, pct=max>0?Math.round((v/max)*100):0;
-      html+='<div class="cat-row"><div class="cat-top"><span class="name">'+esc(c)+'</span><span class="val">'+fmt(v)+'</span></div>'
-          +'<div class="bar"><i style="width:'+pct+'%"></i></div></div>';
+      var v=byCat[c]||0, pct=max>0?Math.round((v/max)*100):0, open=!!state.expanded[c];
+      var count=(entriesByCat[c]||[]).length;
+      html+='<div class="cat-block">'
+        +'<div class="cat-head" data-cat="'+esc(c)+'">'
+        +  '<div class="cat-top"><span class="name"><span class="caret">'+(open?"▾":"▸")+'</span> '+esc(c)+' <span class="val">('+count+')</span></span>'
+        +  '<span class="val">'+fmt(v)+'</span></div>'
+        +  '<div class="bar"><i style="width:'+pct+'%"></i></div>'
+        +'</div>';
+      if(open){
+        var es=sortByDateDesc((entriesByCat[c]||[]).slice(),defY).slice(0,10);
+        html+='<div class="cat-entries">'+(es.length?es.map(cardHTML).join(""):'<div class="empty">No entries</div>')+'</div>';
+      }
+      html+='</div>';
     });
     els.catBreakdown.innerHTML=html;
   }
+  // Recent entries: newest first by date, capped at recentLimit with a Load-more button.
   function renderEntries(){
-    // newest first: pending on top, then confirmed by descending sheet row
-    var confirmed=state.expenses.slice().sort(function(a,b){return (b.row||0)-(a.row||0);});
-    var ordered=state.pending.concat(confirmed);
-    if(!ordered.length){els.entries.innerHTML='<div class="empty">No expenses yet</div>';return;}
-    var html="";
-    ordered.slice(0,60).forEach(function(e){
-      var initials=(e.category||"?").trim().slice(0,2);
-      var canDelete=!e._pending&&e.row;
-      html+='<div class="entry'+(e._pending?" pending":"")+'">'
-        +'<div class="chip">'+esc(initials)+'</div>'
-        +'<div class="body"><div class="cat">'+esc(e.description||e.category||"—")+'</div>'
-        +  '<div class="desc">'+esc(e.category||"")+(e.date?" · "+esc(e.date):"")+'</div></div>'
-        +'<div class="right"><div class="amt">'+fmt(e.amount)+'</div>'
-        +  '<div class="date">'+(e._pending?"saving…":"")+'</div></div>'
-        +'<button class="del" title="Delete" aria-label="Delete expense"'
-        +  (canDelete?' data-row="'+esc(e.row)+'" data-dc="'+esc(e.descCol)+'" data-ac="'+esc(e.amountCol)+'" data-tc="'+esc(e.dateCol)+'" data-desc="'+esc(e.description||"")+'"':' disabled')+'>&times;</button>'
-        +'</div>';
-    });
-    els.entries.innerHTML=html;
+    var defY=guessYear(state.expenses);
+    var confirmed=sortByDateDesc(state.expenses.slice(),defY);
+    if(!state.pending.length && !confirmed.length){
+      els.entries.innerHTML='<div class="empty">No expenses yet</div>';
+      els.loadMore.classList.add("hidden");return;
+    }
+    var shownC=confirmed.slice(0,state.recentLimit);
+    els.entries.innerHTML=state.pending.map(cardHTML).join("")+shownC.map(cardHTML).join("");
+    var remaining=confirmed.length-shownC.length;
+    if(remaining>0){
+      els.loadMore.classList.remove("hidden");
+      els.loadMore.textContent="Load more ("+remaining+" more)";
+    } else { els.loadMore.classList.add("hidden"); }
   }
-  function renderAll(){renderCurrency();renderCategories();renderTotals();renderEntries();}
+  function renderAll(){renderCurrency();renderCategories();rebuildIndex();renderStats();renderBreakdown();renderEntries();}
 
   function updateStatus(){
     if(!configured()){els.syncSub.textContent="Not connected — tap ⚙︎";els.authBtn.classList.add("hidden");els.submitBtn.disabled=true;return;}
@@ -514,6 +646,20 @@
         });
       });
   }
+  // Overwrite an existing entry's 3 cells in place, guarded by the original description.
+  function guardedUpdate(orig, vals){
+    var descCell=q(state.tab)+"!"+colA1(orig.descCol)+orig.row;
+    return gapi.client.sheets.spreadsheets.values.get({spreadsheetId:state.sheetId,range:descCell,valueRenderOption:"FORMATTED_VALUE"})
+      .then(function(res){
+        var cur=trimStr(res.result.values&&res.result.values[0]&&res.result.values[0][0]);
+        if(cur!==trimStr(orig.description)) throw new Error("Row changed — refresh and try again");
+        var range=q(state.tab)+"!"+colA1(orig.descCol)+orig.row+":"+colA1(orig.dateCol)+orig.row;
+        return gapi.client.sheets.spreadsheets.values.update({
+          spreadsheetId:state.sheetId, range:range, valueInputOption:"USER_ENTERED",
+          resource:{ values:[[ vals.description, vals.amount, vals.date ]] }
+        });
+      });
+  }
   function handleApiError(err){
     var status=err&&(err.status||(err.result&&err.result.error&&err.result.error.code));
     var msg=(err&&err.result&&err.result.error&&err.result.error.message)||(err&&err.message)||"Request failed";
@@ -555,29 +701,97 @@
       });
   });
 
-  /* ---------------- delete ---------------- */
-  els.entries.addEventListener("click",function(ev){
-    var btn=ev.target.closest?ev.target.closest(".del"):null;
-    if(!btn||btn.disabled)return;
-    var row=parseInt(btn.getAttribute("data-row"),10);
-    if(!isFinite(row))return;
-    var entry={
-      row:row, descCol:parseInt(btn.getAttribute("data-dc"),10),
-      amountCol:parseInt(btn.getAttribute("data-ac"),10), dateCol:parseInt(btn.getAttribute("data-tc"),10),
-      description:btn.getAttribute("data-desc")||""
-    };
-    if(!confirm("Delete this expense?"))return;
+  /* ---------------- list interactions (edit / delete / expand) ---------------- */
+  function onListClick(ev){
+    var t=ev.target;
+    var editBtn=t.closest?t.closest(".edit"):null;
+    if(editBtn){ var e1=state.byId[editBtn.getAttribute("data-id")]; if(e1)openEdit(e1); return; }
+    var delBtn=t.closest?t.closest(".del"):null;
+    if(delBtn){ var e2=state.byId[delBtn.getAttribute("data-id")]; if(e2)doDelete(e2); return; }
+    var head=t.closest?t.closest(".cat-head"):null;
+    if(head){ var c=head.getAttribute("data-cat"); state.expanded[c]=!state.expanded[c]; renderBreakdown(); return; }
+  }
+  els.entries.addEventListener("click",onListClick);
+  els.catBreakdown.addEventListener("click",onListClick);
+  els.loadMore.addEventListener("click",function(){ state.recentLimit+=10; renderEntries(); });
 
-    var removed=null,idx=-1;
-    for(var i=0;i<state.expenses.length;i++){ if(state.expenses[i].row===row&&state.expenses[i].descCol===entry.descCol){removed=state.expenses[i];idx=i;break;} }
-    if(idx!==-1)state.expenses.splice(idx,1);
-    renderAll();banner("");
+  /* ---------------- confirm modal (guards delete) ---------------- */
+  var confirmResolver=null;
+  function openConfirm(msg){
+    els.confirmMsg.textContent=msg;
+    els.confirmBack.classList.add("open");
+    return new Promise(function(res){ confirmResolver=res; });
+  }
+  function closeConfirm(ok){
+    els.confirmBack.classList.remove("open");
+    if(confirmResolver){ var r=confirmResolver; confirmResolver=null; r(ok); }
+  }
+  els.confirmYes.addEventListener("click",function(){closeConfirm(true);});
+  els.confirmNo.addEventListener("click",function(){closeConfirm(false);});
+  els.confirmBack.addEventListener("click",function(e){ if(e.target===els.confirmBack)closeConfirm(false); });
 
-    ensureToken(false).then(function(){return clearEntry(entry);}).then(function(){return refresh();})
-      .catch(function(err){
-        if(removed&&idx!==-1)state.expenses.splice(idx,0,removed);
-        renderAll();handleApiError(err);
-      });
+  function doDelete(entry){
+    openConfirm("Delete this expense?\n\n"+(entry.description||entry.category||"—")+"   ·   "+fmt(entry.amount)+(entry.date?"   ·   "+entry.date:"")).then(function(ok){
+      if(!ok)return;
+      var removed=null,idx=-1;
+      for(var i=0;i<state.expenses.length;i++){ if(state.expenses[i]===entry){removed=entry;idx=i;break;} }
+      if(idx!==-1)state.expenses.splice(idx,1);
+      renderAll();banner("");
+      ensureToken(false).then(function(){return clearEntry(entry);}).then(function(){return refresh();})
+        .catch(function(err){
+          if(removed&&idx!==-1)state.expenses.splice(idx,0,removed);
+          renderAll();handleApiError(err);
+        });
+    });
+  }
+
+  /* ---------------- edit modal (guards edit) ---------------- */
+  function openEdit(entry){
+    state.editing=entry;
+    var opts="";
+    var cats=state.categories.slice();
+    if(cats.indexOf(entry.category)===-1) cats.unshift(entry.category);
+    cats.forEach(function(c){ opts+='<option value="'+esc(c)+'">'+esc(c)+'</option>'; });
+    els.editCat.innerHTML=opts; els.editCat.value=entry.category;
+    els.editDate.value=entry.date||"";
+    els.editAmount.value=entry.amount;
+    els.editDesc.value=entry.description||"";
+    els.editErr.textContent="";
+    els.editBack.classList.add("open");
+    els.editAmount.focus();
+  }
+  function closeEdit(){ els.editBack.classList.remove("open"); state.editing=null; }
+  els.editCancel.addEventListener("click",closeEdit);
+  els.editBack.addEventListener("click",function(e){ if(e.target===els.editBack)closeEdit(); });
+
+  els.editSave.addEventListener("click",function(){
+    var entry=state.editing; if(!entry)return;
+    var newCat=els.editCat.value, newDesc=els.editDesc.value.trim(), newAmt=num(els.editAmount.value), newDate=els.editDate.value.trim();
+    if(!newCat){ els.editErr.textContent="Pick a category."; return; }
+    if(!(newAmt>0)){ els.editErr.textContent="Amount must be greater than 0."; return; }
+
+    // snapshot original for guarded writes + rollback
+    var orig={row:entry.row,descCol:entry.descCol,amountCol:entry.amountCol,dateCol:entry.dateCol,
+      category:entry.category,description:entry.description,amount:entry.amount,date:entry.date};
+    closeEdit();
+
+    // optimistic in-place update
+    entry.category=newCat; entry.description=newDesc; entry.amount=newAmt; entry.date=newDate;
+    renderAll(); banner("");
+
+    var op;
+    if(newCat===orig.category){
+      op=ensureToken(false).then(function(){ return guardedUpdate(orig,{description:newDesc,amount:newAmt,date:newDate}); });
+    } else {
+      // move: add to the new category table first, then clear the old cells
+      op=ensureToken(false)
+        .then(function(){ return appendExpense({category:newCat,description:newDesc,amount:newAmt,date:newDate}); })
+        .then(function(){ return clearEntry(orig); });
+    }
+    op.then(function(){return refresh();}).catch(function(err){
+      entry.category=orig.category; entry.description=orig.description; entry.amount=orig.amount; entry.date=orig.date;
+      renderAll(); handleApiError(err);
+    });
   });
 
   /* ---------------- settings modal ---------------- */
