@@ -143,6 +143,22 @@
   @keyframes spin{to{transform:rotate(360deg)}}
   .foot{text-align:center;font-size:11px;color:var(--muted);margin-top:8px}
   a{color:var(--indigo)}
+  /* voice assistant */
+  .mic-fab{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));width:60px;height:60px;border-radius:50%;border:none;background:linear-gradient(135deg,var(--indigo),var(--indigo-600));color:#fff;font-size:26px;cursor:pointer;box-shadow:0 8px 24px rgba(20,184,166,.45);display:grid;place-items:center;z-index:40}
+  .mic-fab:active{transform:scale(.94)}
+  .mic-modal{max-width:430px;text-align:center}
+  .mic-langs{display:flex;gap:8px;justify-content:center;margin:2px 0 14px}
+  .mic-lang{appearance:none;border:1px solid var(--border);background:var(--card);color:var(--text);border-radius:999px;padding:7px 18px;font:inherit;font-weight:700;font-size:13px;cursor:pointer}
+  .mic-lang.active{background:var(--indigo);color:#fff;border-color:transparent}
+  .mic-orb{width:92px;height:92px;border-radius:50%;margin:6px auto 14px;background:var(--indigo-050);color:var(--indigo);display:grid;place-items:center;font-size:36px;position:relative;transition:background .2s ease}
+  .mic-orb.live{background:var(--indigo);color:#fff}
+  .mic-orb.live::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:3px solid var(--indigo);animation:pulse 1.2s ease-out infinite}
+  @keyframes pulse{0%{transform:scale(1);opacity:.6}100%{transform:scale(1.55);opacity:0}}
+  .mic-transcript{min-height:46px;font-size:17px;font-weight:600;margin:4px 0;line-height:1.4}
+  .mic-interim{color:var(--muted);font-weight:500}
+  .mic-result{font-size:13px;color:var(--indigo);font-weight:600;margin-top:8px;min-height:18px}
+  .mic-examples{text-align:left;font-size:12px;color:var(--muted);background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:11px 13px;margin-top:14px;line-height:1.8}
+  .mic-examples b{color:var(--text)}
   hr.sep{border:none;border-top:1px solid var(--border);margin:18px 0 14px}
 </style>
 </head>
@@ -338,6 +354,27 @@
   </div>
 </div>
 
+<!-- Voice assistant FAB + overlay -->
+<button id="micFab" class="mic-fab" title="Speak to guide the app" aria-label="Voice command">🎤</button>
+<div class="modal-back" id="micBack">
+  <div class="modal mic-modal" role="dialog" aria-modal="true" aria-labelledby="micTitle">
+    <h3 id="micTitle">Speak to guide the app</h3>
+    <p>Talk in English or Urdu — add expenses, create/rename/delete categories, or ask your total.</p>
+    <div class="mic-langs">
+      <button class="mic-lang" data-lang="en-US" id="micLangEn" type="button">English</button>
+      <button class="mic-lang" data-lang="ur-PK" id="micLangUr" type="button">اردو</button>
+    </div>
+    <div class="mic-orb" id="micOrb">🎙️</div>
+    <div class="mic-transcript" id="micText">Tap “Listen” and speak…</div>
+    <div class="mic-result" id="micResult"></div>
+    <div class="mic-examples" id="micExamples"></div>
+    <div class="row">
+      <button class="btn ghost" id="micClose" type="button">Close</button>
+      <button class="btn" id="micListen" type="button">Listen</button>
+    </div>
+  </div>
+</div>
+
 <!-- Delete category modal (guards orphaned entries) -->
 <div class="modal-back" id="delCatBack">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="delCatTitle" style="max-width:430px">
@@ -356,7 +393,7 @@
 (function(){
   "use strict";
 
-  var LS_CLIENT="et_client_id", LS_SHEET="et_sheet_id", LS_TAB="et_tab", LS_CUR="et_currency", LS_IGNORE="et_ignore";
+  var LS_CLIENT="et_client_id", LS_SHEET="et_sheet_id", LS_TAB="et_tab", LS_CUR="et_currency", LS_IGNORE="et_ignore", LS_VOICE="et_voice_lang";
   var DEFAULT_IGNORE="brick wasoli, cement wasoli";
   var POLL_MS=20000;
   var SCOPE="https://www.googleapis.com/auth/spreadsheets";
@@ -400,7 +437,10 @@
     renameBack:$("renameBack"),renameName:$("renameName"),renameErr:$("renameErr"),
     renameSave:$("renameSave"),renameCancel:$("renameCancel"),
     delCatBack:$("delCatBack"),delCatMsg:$("delCatMsg"),delCatMoveWrap:$("delCatMoveWrap"),
-    delCatTarget:$("delCatTarget"),delCatErr:$("delCatErr"),delCatActions:$("delCatActions")
+    delCatTarget:$("delCatTarget"),delCatErr:$("delCatErr"),delCatActions:$("delCatActions"),
+    micFab:$("micFab"),micBack:$("micBack"),micLangEn:$("micLangEn"),micLangUr:$("micLangUr"),
+    micOrb:$("micOrb"),micText:$("micText"),micResult:$("micResult"),micExamples:$("micExamples"),
+    micClose:$("micClose"),micListen:$("micListen")
   };
 
   /* ---------------- helpers ---------------- */
@@ -1107,6 +1147,232 @@
       .catch(function(){els.connectBtnText.textContent="Sign in with Google";});
   });
 
+  /* ================= voice assistant (English + Urdu) ================= */
+  var voiceLang = localStorage.getItem(LS_VOICE) || ((navigator.language||"en").slice(0,2)==="ur" ? "ur-PK" : "en-US");
+  var recog=null, listening=false, finalText="";
+
+  // -- number words: English + Roman Urdu + Urdu script (units, tens, scales) --
+  var NUM_WORDS={
+    zero:0,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,
+    eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,sixteen:16,seventeen:17,eighteen:18,nineteen:19,
+    twenty:20,thirty:30,forty:40,fifty:50,sixty:60,seventy:70,eighty:80,ninety:90,
+    aik:1,ek:1,do:2,teen:3,tin:3,char:4,chaar:4,paanch:5,panch:5,che:6,chay:6,cheh:6,saat:7,aath:8,ath:8,nau:9,das:10,dus:10,
+    gyara:11,bara:12,tera:13,chauda:14,pandra:15,bees:20,tees:30,chalis:40,pachaas:50,pachas:50,saath:60,sattar:70,assi:80,nabbe:90,
+    "پانچ":5,"دس":10,"سو":100,"بیس":20,"سات":7,"تین":3,"دو":2,"چار":4,"ایک":1
+  };
+  var SCALES={hundred:100,sau:100,"سو":100,thousand:1000,k:1000,hazaar:1000,hazar:1000,"ہزار":1000,lakh:100000,lac:100000,lakhs:100000,"لاکھ":100000,million:1000000,crore:10000000,"کروڑ":10000000};
+  var CURRENCY={rupay:1,rupaye:1,rupaya:1,rupya:1,rupaey:1,rupee:1,rupees:1,rs:1,pkr:1,taka:1,paisay:1,paise:1,"روپے":1,"روپیہ":1};
+  var STOP={add:1,"expense":1,expenses:1,kharch:1,kharcha:1,kharchay:1,karo:1,kar:1,likho:1,likh:1,note:1,daal:1,daalo:1,dalo:1,dedo:1,
+    mein:1,me:1,main:1,ka:1,ki:1,ke:1,liye:1,lie:1,for:1,in:1,into:1,to:1,please:1,plz:1,ko:1,par:1,pe:1,
+    category:1,categories:1,"کیٹیگری":1,aaj:1,today:1,kal:1,yesterday:1,ye:1,yeh:1,is:1,the:1,a:1,an:1,of:1};
+
+  function normDigits(s){
+    return String(s||"").replace(/[۰-۹]/g,function(d){return "۰۱۲۳۴۵۶۷۸۹".indexOf(d);})
+                        .replace(/[٠-٩]/g,function(d){return "٠١٢٣٤٥٦٧٨٩".indexOf(d);});
+  }
+  function isNumTok(t){ return /^\d+(\.\d+)?$/.test(t) || NUM_WORDS.hasOwnProperty(t); }
+  function numTokVal(t){ if(/^\d+(\.\d+)?$/.test(t)) return parseFloat(t); return NUM_WORDS[t]; }
+  function wordsToNum(toks){
+    var result=0, chunk=0, any=false;
+    toks.forEach(function(t){
+      if(SCALES.hasOwnProperty(t)){ chunk=(chunk||1)*SCALES[t]; result+=chunk; chunk=0; any=true; }
+      else if(isNumTok(t)){ chunk+=numTokVal(t); any=true; }
+    });
+    result+=chunk;
+    return any?result:0;
+  }
+  // group consecutive number/scale tokens; prefer a group next to a currency word, else the largest
+  function extractAmount(norm){
+    var toks=norm.split(" "), groups=[], cur=[], start=-1;
+    for(var i=0;i<toks.length;i++){
+      var t=toks[i];
+      if(isNumTok(t)||SCALES.hasOwnProperty(t)){ if(!cur.length)start=i; cur.push(t); }
+      else { if(cur.length){ groups.push({toks:cur,start:start,end:i-1}); cur=[]; } }
+    }
+    if(cur.length) groups.push({toks:cur,start:start,end:toks.length-1});
+    if(!groups.length) return 0;
+    var best=null;
+    groups.forEach(function(g){
+      g.value=wordsToNum(g.toks);
+      var before=toks[g.start-1], after=toks[g.end+1];
+      g.nearCur=(before&&CURRENCY[before])||(after&&CURRENCY[after])||false;
+    });
+    var withCur=groups.filter(function(g){return g.nearCur && g.value>0;});
+    var pool=withCur.length?withCur:groups;
+    pool.forEach(function(g){ if(g.value>0 && (!best||g.value>best.value)) best=g; });
+    return best?best.value:0;
+  }
+  function matchCategory(norm){
+    var best="";
+    state.categories.forEach(function(c){ var nc=normName(c); if(nc && norm.indexOf(nc)!==-1 && nc.length>best.length){ best=nc; } });
+    if(!best) return "";
+    // return the original-cased category
+    for(var i=0;i<state.categories.length;i++){ if(normName(state.categories[i])===best) return state.categories[i]; }
+    return "";
+  }
+  function cap(s){ return String(s||"").replace(/\b\w/g,function(m){return m.toUpperCase();}).trim(); }
+  function cleanWords(s, extra){
+    extra=extra||{};
+    return s.split(" ").filter(function(t){ return t && !STOP[t] && !extra[t] && !isNumTok(t) && !SCALES[t] && !CURRENCY[t]; }).join(" ").trim();
+  }
+  function shiftDate(days){ var d=new Date(); d.setDate(d.getDate()+days); var o=d.getTimezoneOffset(); return new Date(d.getTime()-o*60000).toISOString().slice(0,10); }
+
+  function buildDescription(norm, category){
+    var catWords={}; if(category) normName(category).split(" ").forEach(function(w){catWords[w]=1;});
+    var extra={create:1,make:1,"new":1,nai:1,nayi:1,naya:1,banao:1,bana:1,rename:1,naam:1,rakho:1,kardo:1,badlo:1,badal:1,
+      "delete":1,remove:1,hatao:1,hata:1,mita:1,khatam:1,total:1,kitna:1,kitni:1,kul:1,balance:1,"how":1,much:1};
+    var out=norm.split(" ").filter(function(t){ return t && !STOP[t] && !extra[t] && !catWords[t] && !isNumTok(t) && !SCALES[t] && !CURRENCY[t]; });
+    return out.join(" ").trim();
+  }
+
+  function parseCommand(raw){
+    var original=String(raw||"").trim();
+    var norm=normDigits(original).toLowerCase().replace(/[,.](?=\s|$)/g,"").replace(/,/g,"").replace(/\s+/g," ").trim();
+    var res={intent:"unknown",amount:0,category:"",description:"",name:"",oldCat:"",newName:"",date:todayISO(),raw:original};
+    if(/\b(kal|yesterday)\b/.test(norm)) res.date=shiftDate(-1);
+    var hasCat=/categor|کیٹیگری/.test(norm);
+
+    if(hasCat && /(delete|remove|hatao|hata do|khatam|mita|ختم|حذف)/.test(norm)){
+      res.intent="delete";
+      var after=norm.replace(/.*categor(?:y|ies)?/,"");
+      res.category=matchCategory(norm)||cap(cleanWords(after,{delete:1,remove:1,hatao:1,hata:1,mita:1,khatam:1}));
+      return res;
+    }
+    if(/(rename|naam badlo|naam badal|rakho|naam)/.test(norm) && (/ to /.test(norm)||/ ko /.test(norm)||/naam/.test(norm))){
+      var oldC="", newN="";
+      if(/ to /.test(norm)){ var p=norm.split(" to "); oldC=matchCategory(p[0])||cap(cleanWords(p[0])); newN=cap(cleanWords(p.slice(1).join(" to "))); }
+      else { var m=norm.match(/(.+?)\s+(?:ka|ki)\s+naam\s+(.+)/); if(m){ oldC=matchCategory(m[1])||cap(cleanWords(m[1])); newN=cap(cleanWords(m[2],{rakho:1,kardo:1,karo:1,badlo:1,badal:1,do:1})); }
+              else { var m2=norm.match(/(.+?)\s+ko\s+(.+)/); if(m2){ oldC=matchCategory(m2[1])||cap(cleanWords(m2[1])); newN=cap(cleanWords(m2[2],{rakho:1,kardo:1,karo:1,badlo:1})); } } }
+      if(oldC && newN){ res.intent="rename"; res.oldCat=oldC; res.newName=newN; return res; }
+    }
+    if(hasCat && /(create|make|new|nai|nayi|naya|banao|bana do|add|banaa)/.test(norm)){
+      res.intent="create";
+      var afterC=norm.replace(/.*categor(?:y|ies)?/,"");
+      var nm=cleanWords(afterC,{create:1,make:1,"new":1,nai:1,nayi:1,naya:1,banao:1,bana:1,banaa:1,add:1});
+      if(!nm){ nm=cleanWords(norm,{create:1,make:1,"new":1,nai:1,nayi:1,naya:1,banao:1,bana:1,banaa:1,add:1}); }
+      res.name=cap(nm);
+      return res;
+    }
+    if(/\b(total|how much|kitna|kitni|kul|balance)\b/.test(norm) || /کتنا|کل/.test(norm)){ res.intent="total"; return res; }
+
+    res.amount=extractAmount(norm);
+    res.category=matchCategory(norm);
+    res.description=buildDescription(norm,res.category);
+    if(res.amount>0 || /(add|expense|kharch|likho|note|daal|dalo|خرچ)/.test(norm)) res.intent="add";
+    return res;
+  }
+
+  // -- speech output --
+  function speak(text){
+    try{ if(!("speechSynthesis" in window)) return; var u=new SpeechSynthesisUtterance(text); u.lang=voiceLang; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); }catch(e){}
+  }
+  function micSay(msg, speakToo){ els.micResult.textContent=msg||""; if(speakToo) speak(msg); }
+
+  // -- execute a parsed command against the app --
+  function runVoice(text){
+    var cmd=parseCommand(text);
+    if(cmd.intent==="total"){
+      var total=0; allExpenses().forEach(function(e){total+=num(e.amount);});
+      micSay("Total spent: "+fmt(total), true); return;
+    }
+    if(cmd.intent==="create"){
+      if(!cmd.name){ micSay("What should I name the category?", true); return; }
+      if(state.categories.some(function(c){return normName(c)===normName(cmd.name);})){ els.category.value=matchCategory(normName(cmd.name))||cmd.name; micSay("Category '"+cmd.name+"' already exists.", true); return; }
+      if(isIgnored(cmd.name)){ micSay("That name is in the ignore list.", true); return; }
+      micSay("Creating category '"+cmd.name+"'…");
+      ensureToken(false).then(function(){return createCategory(cmd.name);}).then(function(){return refresh();})
+        .then(function(){ els.category.value=cmd.name; micSay("Created category '"+cmd.name+"'.", true); })
+        .catch(function(err){ micSay(err&&err.message||"Could not create category", true); });
+      return;
+    }
+    if(cmd.intent==="rename"){
+      var oldReal=state.categories.filter(function(c){return normName(c)===normName(cmd.oldCat)||normName(c).indexOf(normName(cmd.oldCat))!==-1;})[0]||cmd.oldCat;
+      if(state.categories.indexOf(oldReal)===-1){ micSay("Couldn't find category '"+cmd.oldCat+"'.", true); return; }
+      micSay("Renaming '"+oldReal+"' to '"+cmd.newName+"'…");
+      ensureToken(false).then(function(){return renameCategory(oldReal,cmd.newName);}).then(function(){return refresh();})
+        .then(function(){ micSay("Renamed to '"+cmd.newName+"'.", true); })
+        .catch(function(err){ micSay(err&&err.message||"Could not rename", true); });
+      return;
+    }
+    if(cmd.intent==="delete"){
+      var delReal=matchCategory(normName(cmd.category))||cmd.category;
+      if(state.categories.indexOf(delReal)===-1){ micSay("Couldn't find category '"+cmd.category+"'.", true); return; }
+      closeMic(); openDeleteCategory(delReal); speak("Please confirm how to delete "+delReal); return;
+    }
+    if(cmd.intent==="add"){
+      if(!state.signedIn){ micSay("Please sign in first (tap the gear).", true); return; }
+      if(!(cmd.amount>0)){ micSay("How much? Say an amount, e.g. 500.", true); return; }
+      if(!cmd.category){ micSay("Which category? e.g. "+(state.categories.slice(0,4).join(", ")||"create one first"), true); return; }
+      els.date.value=cmd.date||todayISO();
+      els.amount.value=cmd.amount;
+      els.category.value=cmd.category;
+      els.description.value=cmd.description||"";
+      if(els.form.requestSubmit) els.form.requestSubmit(); else els.form.dispatchEvent(new Event("submit",{cancelable:true}));
+      var msg="Added "+fmt(cmd.amount)+" to "+cmd.category+(cmd.description?" for "+cmd.description:"");
+      micSay(msg, true);
+      return;
+    }
+    micSay("Sorry, I didn't understand. Try: “add 500 for lunch in "+(state.categories[0]||"Food")+"”.", true);
+  }
+
+  // -- recognition lifecycle --
+  function voiceSupported(){ return !!(window.SpeechRecognition||window.webkitSpeechRecognition); }
+  function startListen(){
+    if(!voiceSupported()){ micSay("Voice input isn't supported in this browser. Use Chrome (Android/desktop)."); return; }
+    var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    try{ recog=new SR(); }catch(e){ micSay("Could not start the microphone."); return; }
+    recog.lang=voiceLang; recog.interimResults=true; recog.maxAlternatives=1; recog.continuous=false;
+    finalText="";
+    recog.onstart=function(){ listening=true; els.micOrb.classList.add("live"); els.micText.textContent="Listening…"; els.micListen.textContent="Stop"; els.micResult.textContent=""; };
+    recog.onresult=function(e){
+      var interim=""; for(var i=e.resultIndex;i<e.results.length;i++){ var r=e.results[i]; if(r.isFinal) finalText+=r[0].transcript; else interim+=r[0].transcript; }
+      els.micText.innerHTML=esc(finalText)+(interim?' <span class="mic-interim">'+esc(interim)+'</span>':"");
+    };
+    recog.onerror=function(e){ micSay("Mic: "+esc(e.error||"error")+(e.error==="not-allowed"?" — allow microphone access.":"")); };
+    recog.onend=function(){
+      listening=false; els.micOrb.classList.remove("live"); els.micListen.textContent="Listen";
+      var t=trimStr(finalText);
+      if(t){ els.micText.textContent=t; runVoice(t); }
+      else if(!els.micResult.textContent){ micSay("Didn't catch that — tap Listen and speak."); }
+    };
+    try{ recog.start(); }catch(e){ micSay("Mic busy — try again."); }
+  }
+  function stopListen(){ if(recog&&listening){ try{recog.stop();}catch(e){} } }
+
+  function setExamples(){
+    if(voiceLang==="ur-PK"){
+      els.micExamples.innerHTML="<b>مثالیں:</b><br>• Khana mein 500 rupay lunch add karo<br>• Nayi category Plumbing banao<br>• Food ka naam Grocery rakho<br>• Total kitna hai";
+    } else {
+      els.micExamples.innerHTML="<b>Try saying:</b><br>• Add 500 for lunch in "+(state.categories[0]||"Food")+"<br>• Create category Plumbing<br>• Rename "+(state.categories[0]||"Food")+" to Grocery<br>• What's my total";
+    }
+  }
+  function setLang(l){
+    voiceLang=l; localStorage.setItem(LS_VOICE,l);
+    els.micLangEn.classList.toggle("active", l==="en-US");
+    els.micLangUr.classList.toggle("active", l==="ur-PK");
+    setExamples();
+    if(listening){ stopListen(); setTimeout(startListen,250); }
+  }
+  function openMic(){
+    if(!configured()){ openModal(); return; }
+    setLang(voiceLang); els.micResult.textContent=""; els.micText.textContent="Listening…";
+    els.micBack.classList.add("open");
+    if(voiceSupported()) startListen(); else micSay("Voice input needs Chrome (Android/desktop).");
+  }
+  function closeMic(){ stopListen(); try{window.speechSynthesis&&window.speechSynthesis.cancel();}catch(e){} els.micBack.classList.remove("open"); }
+
+  function setupVoice(){
+    els.micFab.addEventListener("click", openMic);
+    els.micClose.addEventListener("click", closeMic);
+    els.micBack.addEventListener("click", function(e){ if(e.target===els.micBack) closeMic(); });
+    els.micListen.addEventListener("click", function(){ if(listening) stopListen(); else startListen(); });
+    els.micLangEn.addEventListener("click", function(){ setLang("en-US"); });
+    els.micLangUr.addEventListener("click", function(){ setLang("ur-PK"); });
+    if(!voiceSupported()) els.micFab.title="Voice needs Chrome";
+  }
+  // exposed for tests
+  window.__voiceParse=parseCommand;
+
   /* ---------------- polling ---------------- */
   var pollTimer=null;
   function startPolling(){
@@ -1117,7 +1383,7 @@
 
   /* ---------------- init ---------------- */
   function init(){
-    els.date.value=todayISO();renderCurrency();renderAll();updateStatus();
+    els.date.value=todayISO();renderCurrency();renderAll();updateStatus();setupVoice();
     if(configured()){ banner("Connecting…","info"); connect(false).catch(function(){}); }
     else { banner("Welcome! Tap ⚙︎ to connect your Google Sheet.","info","Setup",openModal); }
     startPolling();
