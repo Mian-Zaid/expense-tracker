@@ -16,6 +16,10 @@ Google sign-in.
 - 📊 Big **Total Spent** plus **expandable** per-category totals (tap a category
   to see its last 10 entries)
 - ✎ **Edit** and 🗑️ **delete** any expense — both guarded by a confirmation popup
+- 🔀 **Move** an entry to another category (change the category in the edit popup)
+- ➕ **Create a new category** — adds a new table to your sheet, beside the others
+- ✏️ **Rename** a category, and 🗑️ **delete** a category — deleting never orphans
+  entries: you must move them elsewhere or delete them first (with confirmation)
 - 🕒 **Recent Entries** sorted newest-first by date, 10 at a time with **Load more**
 - ⚡ Optimistic updates + 20-second polling to stay in sync across devices
 - 🔐 Signs in with **your** Google account — data never leaves your Sheet
@@ -70,6 +74,18 @@ uses the title above it as the category. You don't configure columns anywhere.
   the neighbouring tables) and **never overwrites a non-empty cell**.
 - **Delete** just clears that entry's three cells, leaving a blank gap — again,
   no row shifting.
+- **Move** (changing an entry's category in the edit popup) appends it to the
+  destination table, then clears the old cells.
+- **Create category** (the "＋ New category" link, or "＋ New category…" in the
+  edit popup) adds a new `title + Description | Amount | Date` table in fresh
+  columns to the right of the existing tables — nothing existing shifts.
+- **Rename category** (expand a category → **✎ Rename**) just overwrites its
+  title cell; the entries stay put beneath it.
+- **Delete category** (expand a category → **🗑 Delete category**) never deletes
+  entries silently. If the category has entries you must first either **move all
+  of them** to another category (existing or newly created) or **delete them**
+  along with the category — each behind a confirmation dialog. Only once it's
+  empty is the table cleared from the sheet (its own columns only, no shifting).
 - Your sheet's own `Total` formulas are left untouched. If a Total uses a fixed
   range that doesn't cover the new row, extend that range in the sheet; the app's
   own "By Category" totals always reflect every entry.
