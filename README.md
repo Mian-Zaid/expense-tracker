@@ -20,6 +20,9 @@ Google sign-in.
 - ➕ **Create a new category** — adds a new table to your sheet, beside the others
 - ✏️ **Rename** a category, and 🗑️ **delete** a category — deleting never orphans
   entries: you must move them elsewhere or delete them first (with confirmation)
+- 🎤 **Voice control (English + Urdu)** — tap the mic and speak to add expenses,
+  create/rename/delete categories, or ask your total. The manual UI still works
+  exactly as before; voice is an extra way in.
 - 🕒 **Recent Entries** sorted newest-first by date, 10 at a time with **Load more**
 - ⚡ Optimistic updates + 20-second polling to stay in sync across devices
 - 🔐 Signs in with **your** Google account — data never leaves your Sheet
@@ -134,6 +137,34 @@ uses the title above it as the category. You don't configure columns anywhere.
 Categories load and expenses sync straight to your sheet. 🎉
 
 ---
+
+## Voice control (English + Urdu)
+
+Tap the floating **🎤** button and speak. Pick **English** or **اردو** in the
+overlay. Everything you can do by hand, you can now say — the manual forms and
+buttons are unchanged.
+
+Recognition uses your browser's built-in Web Speech API (no server, nothing sent
+anywhere but Google's own speech service via the browser). The app spoken-confirms
+each action. Understood commands:
+
+| You say (examples) | Action |
+|---|---|
+| "Add 500 for lunch in Food" · "Food mein 500 rupay lunch daal do" | Adds the expense |
+| "Five hundred for Food coffee" · "Do sau rupay Food chai" | Parses spelled-out / Urdu numbers |
+| "Create category Plumbing" · "Nayi category Plumbing banao" | Creates a category |
+| "Rename Food to Grocery" · "Transport ka naam Travel rakho" | Renames a category |
+| "Delete category Bills" · "Bills category delete karo" | Opens the safe delete flow |
+| "What's my total" · "Total kitna hai" | Speaks your total |
+
+Notes:
+- Say a **category name that exists** in your sheet (e.g. your real table titles).
+  If it isn't found, the app tells you.
+- Numbers work as digits, English words ("five hundred", "2k"), or Roman/Urdu
+  ("do sau" = 200, "paanch hazaar" = 5000).
+- **Browser support:** works in **Chrome** (Android and desktop) and Edge. iOS
+  Safari doesn't support speech recognition; the mic button will say so and the
+  manual UI still works.
 
 ## Hosting on GitHub Pages
 
