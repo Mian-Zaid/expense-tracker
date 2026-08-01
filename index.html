@@ -43,6 +43,7 @@
     transition:transform .08s ease, background .15s ease;
   }
   .icon-btn.square{width:42px;padding:0;font-size:18px}
+  a.icon-btn{text-decoration:none}
   .icon-btn:active{transform:scale(.94)}
   .icon-btn.accent{background:var(--indigo);color:#fff;border-color:transparent;box-shadow:0 6px 16px rgba(20,184,166,.35)}
   .hidden{display:none !important}
@@ -155,6 +156,7 @@
     </div>
     <div class="hbtns">
       <button class="icon-btn accent hidden" id="authBtn">Sign in</button>
+      <a class="icon-btn square hidden" id="sheetLink" href="#" target="_blank" rel="noopener" title="Open Google Sheet" aria-label="Open Google Sheet">🔗</a>
       <button class="icon-btn square" id="settingsBtn" title="Settings" aria-label="Settings">⚙︎</button>
     </div>
   </header>
@@ -387,7 +389,7 @@
     description:$("description"),submitBtn:$("submitBtn"),curLabel:$("curLabel"),
     totalAmount:$("totalAmount"),totalMeta:$("totalMeta"),catBreakdown:$("catBreakdown"),
     entries:$("entries"),loadMore:$("loadMore"),banner:$("banner"),bannerText:$("bannerText"),bannerAct:$("bannerAct"),
-    syncSub:$("syncSub"),settingsBtn:$("settingsBtn"),authBtn:$("authBtn"),
+    syncSub:$("syncSub"),settingsBtn:$("settingsBtn"),authBtn:$("authBtn"),sheetLink:$("sheetLink"),
     modalBack:$("modalBack"),clientIdInput:$("clientIdInput"),sheetInput:$("sheetInput"),
     tabInput:$("tabInput"),ignoreInput:$("ignoreInput"),curInput:$("curInput"),connectBtn:$("connectBtn"),
     connectBtnText:$("connectBtnText"),authState:$("authState"),
@@ -584,6 +586,11 @@
   function renderAll(){renderCurrency();renderCategories();rebuildIndex();renderStats();renderBreakdown();renderEntries();}
 
   function updateStatus(){
+    // sheet-link button in the header (only when we have a sheet id)
+    if(state.sheetId){
+      els.sheetLink.href="https://docs.google.com/spreadsheets/d/"+encodeURIComponent(state.sheetId)+"/edit";
+      els.sheetLink.classList.remove("hidden");
+    } else { els.sheetLink.classList.add("hidden"); }
     if(!configured()){els.syncSub.textContent="Not connected — tap ⚙︎";els.authBtn.classList.add("hidden");els.submitBtn.disabled=true;return;}
     if(state.signedIn){els.authBtn.classList.add("hidden");}
     else{els.authBtn.classList.remove("hidden");els.syncSub.textContent="Sign in to sync";}
