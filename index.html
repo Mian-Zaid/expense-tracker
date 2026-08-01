@@ -115,6 +115,9 @@
   .loadmore:active{transform:scale(.99)}
   .confirm-msg{font-size:14px;color:var(--text);white-space:pre-wrap;margin:0 0 4px;line-height:1.5}
   .err{font-size:12px;color:var(--danger);margin-top:8px;min-height:14px}
+  .label-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .linkbtn{appearance:none;background:transparent;border:none;color:var(--indigo);font:inherit;font-weight:700;font-size:12px;cursor:pointer;padding:0}
+  .linkbtn:active{opacity:.7}
   .empty{color:var(--muted);font-size:13px;text-align:center;padding:18px 0}
   .modal-back{position:fixed;inset:0;background:rgba(10,10,20,.5);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
   .modal-back.open{display:flex}
@@ -177,7 +180,8 @@
           </div>
         </div>
         <div class="field full">
-          <label for="category">Category</label>
+          <div class="label-row"><label for="category">Category</label>
+          <button type="button" class="linkbtn" id="newCatBtn">＋ New category</button></div>
           <select id="category" required><option value="">Connect a sheet…</option></select>
         </div>
         <div class="field full">
@@ -294,6 +298,23 @@
   </div>
 </div>
 
+<!-- New category modal -->
+<div class="modal-back" id="newCatBack">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="newCatTitle" style="max-width:400px">
+    <h3 id="newCatTitle">New Category</h3>
+    <p>Adds a new category table to your sheet (a title + Description | Amount | Date header), placed beside the existing ones.</p>
+    <div class="field">
+      <label for="newCatName">Category name</label>
+      <input type="text" id="newCatName" placeholder="e.g. Plumbing" />
+    </div>
+    <div class="err" id="newCatErr"></div>
+    <div class="row">
+      <button class="btn ghost" id="newCatCancel" type="button">Cancel</button>
+      <button class="btn" id="newCatCreate" type="button">Create</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   "use strict";
@@ -336,7 +357,9 @@
     saveSettings:$("saveSettings"),cancelSettings:$("cancelSettings"),
     editBack:$("editBack"),editDate:$("editDate"),editAmount:$("editAmount"),editCat:$("editCat"),
     editDesc:$("editDesc"),editErr:$("editErr"),editSave:$("editSave"),editCancel:$("editCancel"),
-    confirmBack:$("confirmBack"),confirmMsg:$("confirmMsg"),confirmYes:$("confirmYes"),confirmNo:$("confirmNo")
+    confirmBack:$("confirmBack"),confirmMsg:$("confirmMsg"),confirmYes:$("confirmYes"),confirmNo:$("confirmNo"),
+    newCatBtn:$("newCatBtn"),newCatBack:$("newCatBack"),newCatName:$("newCatName"),
+    newCatErr:$("newCatErr"),newCatCreate:$("newCatCreate"),newCatCancel:$("newCatCancel")
   };
 
   /* ---------------- helpers ---------------- */
@@ -423,8 +446,8 @@
         if(trimStr(rowArr[c]).toLowerCase()!=="description") continue;
         var descCol=c, amountCol=c+1, dateCol=c+2, headerRow=r;
         // title: nearest non-empty above header in Description column
-        var title="";
-        for(var t=r-1;t>=0;t--){ var tv=trimStr(grid[t]&&grid[t][descCol]); if(tv){title=tv;break;} }
+        var title="", titleRow=null;
+        for(var t=r-1;t>=0;t--){ var tv=trimStr(grid[t]&&grid[t][descCol]); if(tv){title=tv;titleRow=t;break;} }
         if(!title) title="Table "+colA1(descCol);
         if(isIgnored(title)) continue; // skip excluded tables (e.g. wasoli/recovery)
         var baseTitle=title, k=2; while(blocks[title]){ title=baseTitle+" ("+(k++)+")"; }
@@ -444,7 +467,7 @@
           }
         }
         blocks[title]={descCol:descCol,amountCol:amountCol,dateCol:dateCol,
-          headerRow:headerRow,totalRow:totalRow,lastDataRow:lastDataRow};
+          headerRow:headerRow,titleRow:titleRow,totalRow:totalRow,lastDataRow:lastDataRow};
         titles.push(title);
       }
     }
@@ -616,6 +639,34 @@
     }
     return -1;
   }
+  // Create a new category table to the right of the existing ones (new columns,
+  // so nothing existing shifts). Title + "Description|Amount|Date" header row,
+  // aligned to the same rows the other tables use.
+  function createCategory(name){
+    return readGrid().then(function(grid){
+      var p=parseGrid(grid);
+      if(p.titles.some(function(t){return normName(t)===normName(name);}))
+        throw new Error("Category '"+name+"' already exists");
+      var headerRow0=3, titleRow0=1, maxDateCol=-1; // sensible defaults for an empty sheet
+      var refTitles=p.titles;
+      if(refTitles.length){
+        var ref=p.blocks[refTitles[0]];
+        headerRow0=ref.headerRow;
+        titleRow0=(ref.titleRow!=null)?ref.titleRow:Math.max(0,headerRow0-2);
+        refTitles.forEach(function(t){ var b=p.blocks[t]; if(b.dateCol>maxDateCol)maxDateCol=b.dateCol; });
+      }
+      var newDescCol=maxDateCol+2; // one empty gap column before the new table
+      var titleRange=q(state.tab)+"!"+colA1(newDescCol)+(titleRow0+1);
+      var headerRange=q(state.tab)+"!"+colA1(newDescCol)+(headerRow0+1)+":"+colA1(newDescCol+2)+(headerRow0+1);
+      return gapi.client.sheets.spreadsheets.values.batchUpdate({
+        spreadsheetId:state.sheetId,
+        resource:{ valueInputOption:"RAW", data:[
+          { range:titleRange, values:[[ name ]] },
+          { range:headerRange, values:[[ "Description","Amount","Date" ]] }
+        ]}
+      });
+    });
+  }
   function appendExpense(payload){
     // Re-read fresh so we never overwrite existing cells or misjudge the row.
     return readGrid().then(function(grid){
@@ -752,6 +803,7 @@
     var cats=state.categories.slice();
     if(cats.indexOf(entry.category)===-1) cats.unshift(entry.category);
     cats.forEach(function(c){ opts+='<option value="'+esc(c)+'">'+esc(c)+'</option>'; });
+    opts+='<option value="__new__">＋ New category…</option>';
     els.editCat.innerHTML=opts; els.editCat.value=entry.category;
     els.editDate.value=entry.date||"";
     els.editAmount.value=entry.amount;
@@ -767,7 +819,7 @@
   els.editSave.addEventListener("click",function(){
     var entry=state.editing; if(!entry)return;
     var newCat=els.editCat.value, newDesc=els.editDesc.value.trim(), newAmt=num(els.editAmount.value), newDate=els.editDate.value.trim();
-    if(!newCat){ els.editErr.textContent="Pick a category."; return; }
+    if(!newCat||newCat==="__new__"){ els.editErr.textContent="Pick or create a category."; return; }
     if(!(newAmt>0)){ els.editErr.textContent="Amount must be greater than 0."; return; }
 
     // snapshot original for guarded writes + rollback
@@ -792,6 +844,53 @@
       entry.category=orig.category; entry.description=orig.description; entry.amount=orig.amount; entry.date=orig.date;
       renderAll(); handleApiError(err);
     });
+  });
+
+  // choosing "＋ New category…" inside the edit dropdown opens the create flow
+  els.editCat.addEventListener("change",function(){
+    if(els.editCat.value!=="__new__") return;
+    var prev=state.editing?state.editing.category:(state.categories[0]||"");
+    els.editCat.value=prev; // revert selection while the create modal is open
+    openNewCat(function(name){
+      var sentinel=els.editCat.querySelector('option[value="__new__"]');
+      var opt=document.createElement("option"); opt.value=name; opt.textContent=name;
+      els.editCat.insertBefore(opt, sentinel);
+      els.editCat.value=name;
+    });
+  });
+
+  /* ---------------- new category modal ---------------- */
+  var newCatCb=null;
+  function openNewCat(onCreated){
+    newCatCb=onCreated||null;
+    els.newCatName.value=""; els.newCatErr.textContent="";
+    els.newCatBack.classList.add("open"); els.newCatName.focus();
+  }
+  function closeNewCat(){ els.newCatBack.classList.remove("open"); newCatCb=null; }
+  els.newCatBtn.addEventListener("click",function(){
+    if(!state.signedIn){ if(!configured()){openModal();return;} connect(true); return; }
+    openNewCat(function(name){ renderCategories(); els.category.value=name; });
+  });
+  els.newCatCancel.addEventListener("click",closeNewCat);
+  els.newCatBack.addEventListener("click",function(e){ if(e.target===els.newCatBack)closeNewCat(); });
+  els.newCatName.addEventListener("keydown",function(e){ if(e.key==="Enter"){ e.preventDefault(); els.newCatCreate.click(); } });
+  els.newCatCreate.addEventListener("click",function(){
+    var name=els.newCatName.value.trim();
+    if(!name){ els.newCatErr.textContent="Enter a category name."; return; }
+    if(state.categories.some(function(c){return normName(c)===normName(name);})){ els.newCatErr.textContent="That category already exists."; return; }
+    if(isIgnored(name)){ els.newCatErr.textContent="That name is in the Ignore list (Settings)."; return; }
+    els.newCatErr.textContent=""; els.newCatCreate.disabled=true;
+    els.newCatCreate.innerHTML='<span class="spin"></span>Creating…';
+    ensureToken(false).then(function(){ return createCategory(name); }).then(function(){ return refresh(); })
+      .then(function(){
+        var cb=newCatCb; closeNewCat();
+        if(cb) cb(name);
+        banner("Category '"+esc(name)+"' created.","info");
+      })
+      .catch(function(err){
+        els.newCatErr.textContent=(err&&err.message)||"Could not create category";
+      })
+      .then(function(){ els.newCatCreate.disabled=false; els.newCatCreate.textContent="Create"; });
   });
 
   /* ---------------- settings modal ---------------- */
