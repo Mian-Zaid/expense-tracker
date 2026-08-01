@@ -691,15 +691,19 @@
       var p=parseGrid(grid);
       if(p.titles.some(function(t){return normName(t)===normName(name);}))
         throw new Error("Category '"+name+"' already exists");
-      var headerRow0=3, titleRow0=1, maxDateCol=-1; // sensible defaults for an empty sheet
+      var headerRow0=3, titleRow0=1; // sensible defaults for an empty sheet
       var refTitles=p.titles;
       if(refTitles.length){
         var ref=p.blocks[refTitles[0]];
         headerRow0=ref.headerRow;
         titleRow0=(ref.titleRow!=null)?ref.titleRow:Math.max(0,headerRow0-2);
-        refTitles.forEach(function(t){ var b=p.blocks[t]; if(b.dateCol>maxDateCol)maxDateCol=b.dateCol; });
       }
-      var newDescCol=maxDateCol+2; // one empty gap column before the new table
+      // Place the new table to the right of EVERYTHING actually in the sheet —
+      // including ignored tables (e.g. wasoli), which the parser skips. Otherwise
+      // a new table can overlap an ignored one and land in a date-formatted column.
+      var maxUsedCol=-1;
+      grid.forEach(function(row){ if(row && (row.length-1)>maxUsedCol) maxUsedCol=row.length-1; });
+      var newDescCol=maxUsedCol+2; // one empty gap column before the new table
       var titleRange=q(state.tab)+"!"+colA1(newDescCol)+(titleRow0+1);
       var headerRange=q(state.tab)+"!"+colA1(newDescCol)+(headerRow0+1)+":"+colA1(newDescCol+2)+(headerRow0+1);
       return gapi.client.sheets.spreadsheets.values.batchUpdate({
