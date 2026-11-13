@@ -492,7 +492,7 @@
         var title="", titleRow=null;
         for(var t=r-1;t>=0;t--){ var tv=trimStr(grid[t]&&grid[t][descCol]); if(tv){title=tv;titleRow=t;break;} }
         if(!title) title="Table "+colA1(descCol);
-        if(isIgnored(title)) continue; // skip excluded tables (e.g. wasoli/recovery)
+        if(isIgnored(title)){ console.log("[categories] ignored table:", title); continue; } // skip excluded tables (e.g. wasoli/recovery)
         var baseTitle=title, k=2; while(blocks[title]){ title=baseTitle+" ("+(k++)+")"; }
         // walk data rows down to Total / end
         var totalRow=null, lastDataRow=headerRow;
@@ -659,6 +659,14 @@
     return readGrid().then(function(grid){
       var p=parseGrid(grid);
       state.blocks=p.blocks; state.categories=p.titles; state.expenses=p.entries;
+      // DEBUG: log every category picked from the sheet
+      console.log("[categories] picked from sheet tab '"+state.tab+"':", p.titles.length, p.titles);
+      console.table(p.titles.map(function(t,i){
+        var b=p.blocks[t];
+        return {"#":i+1, category:t, titleCell:b.titleRow==null?"-":colA1(b.descCol)+(b.titleRow+1),
+                headerRow:b.headerRow+1,
+                entries:p.entries.filter(function(e){return e.category===t;}).length};
+      }));
       reconcilePending(); renderAll();
       var t=new Date().toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"});
       els.syncSub.textContent = state.categories.length
