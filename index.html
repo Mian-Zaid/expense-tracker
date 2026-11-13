@@ -486,12 +486,18 @@
     for(var r=0;r<grid.length;r++){
       var rowArr=grid[r]||[];
       for(var c=0;c<rowArr.length;c++){
-        if(trimStr(rowArr[c]).toLowerCase()!=="description") continue;
+        var hv=trimStr(rowArr[c]).toLowerCase();
+        if(hv!=="description"){
+          // DEBUG: header-like cells that were NOT picked up (typo / extra spaces / different wording)
+          if(hv.indexOf("desc")!==-1||hv.indexOf("disc")!==-1) console.warn("[categories] near-miss header NOT matched at "+colA1(c)+(r+1)+":", JSON.stringify(rowArr[c]));
+          continue;
+        }
         var descCol=c, amountCol=c+1, dateCol=c+2, headerRow=r;
         // title: nearest non-empty above header in Description column
         var title="", titleRow=null;
         for(var t=r-1;t>=0;t--){ var tv=trimStr(grid[t]&&grid[t][descCol]); if(tv){title=tv;titleRow=t;break;} }
         if(!title) title="Table "+colA1(descCol);
+        console.log("[categories] header at "+colA1(descCol)+(r+1)+" -> title '"+title+"' (title row "+(titleRow==null?"none":titleRow+1)+")");
         if(isIgnored(title)){ console.log("[categories] ignored table:", title); continue; } // skip excluded tables (e.g. wasoli/recovery)
         var baseTitle=title, k=2; while(blocks[title]){ title=baseTitle+" ("+(k++)+")"; }
         // walk data rows down to Total / end
